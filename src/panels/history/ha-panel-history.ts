@@ -1,4 +1,10 @@
-import { mdiDownload, mdiFilterRemove } from "@mdi/js";
+import {
+  mdiDotsVertical,
+  mdiDownload,
+  mdiFilterRemove,
+  mdiImagePlus,
+} from "@mdi/js";
+import { ActionDetail } from "@material/mwc-list";
 import { differenceInHours } from "date-fns/esm";
 import {
   HassServiceTarget,
@@ -22,6 +28,8 @@ import type { StateHistoryCharts } from "../../components/chart/state-history-ch
 import "../../components/ha-circular-progress";
 import "../../components/ha-date-range-picker";
 import "../../components/ha-icon-button";
+import "../../components/ha-button-menu";
+import "../../components/ha-list-item";
 import "../../components/ha-icon-button-arrow-prev";
 import "../../components/ha-menu-button";
 import "../../components/ha-target-picker";
@@ -54,6 +62,7 @@ import { SubscribeMixin } from "../../mixins/subscribe-mixin";
 import { haStyle } from "../../resources/styles";
 import { HomeAssistant } from "../../types";
 import { fileDownload } from "../../util/file_download";
+import { addEntitiesToLovelaceView } from "../lovelace/editor/add-entities-to-view";
 import { showAlertDialog } from "../../dialogs/generic/show-dialog-box";
 
 class HaPanelHistory extends SubscribeMixin(LitElement) {
@@ -168,13 +177,23 @@ class HaPanelHistory extends SubscribeMixin(LitElement) {
               ></ha-icon-button>
             `
           : ""}
-        <ha-icon-button
-          slot="actionItems"
-          @click=${this._downloadHistory}
-          .disabled=${this._isLoading}
-          .path=${mdiDownload}
-          .label=${this.hass.localize("ui.panel.history.download_data")}
-        ></ha-icon-button>
+        <ha-button-menu slot="actionItems" @action=${this._handleMenuAction}>
+          <ha-icon-button
+            slot="trigger"
+            .label=${this.hass.localize("ui.common.menu")}
+            .path=${mdiDotsVertical}
+          ></ha-icon-button>
+
+          <ha-list-item graphic="icon" .disabled=${this._isLoading}>
+            ${this.hass.localize("ui.panel.history.download_data")}
+            <ha-svg-icon slot="graphic" .path=${mdiDownload}></ha-svg-icon>
+          </ha-list-item>
+
+          <ha-list-item graphic="icon" .disabled=${this._isLoading}>
+            ${this.hass.localize("ui.panel.history.add_card")}
+            <ha-svg-icon slot="graphic" .path=${mdiImagePlus}></ha-svg-icon>
+          </ha-list-item>
+        </ha-button-menu>
 
         <div class="flex content">
           <div class="filters">
@@ -656,6 +675,17 @@ class HaPanelHistory extends SubscribeMixin(LitElement) {
     navigate(`/history?${createSearchParam(params)}`, { replace: true });
   }
 
+  private async _handleMenuAction(ev: CustomEvent<ActionDetail>) {
+    switch (ev.detail.index) {
+      case 0:
+        this._downloadHistory();
+        break;
+      case 1:
+        this._suggestCard();
+        break;
+    }
+  }
+
   private _downloadHistory() {
     const entities = this._getEntityIds();
     if (entities.length === 0 || !this._mungedStateHistory) {
@@ -691,11 +721,43 @@ class HaPanelHistory extends SubscribeMixin(LitElement) {
         csv.push(`${entityId},${s.state},${formatDate(s.last_changed)}\n`);
       }
     }
+
     const blob = new Blob(csv, {
       type: "text/csv",
     });
     const url = window.URL.createObjectURL(blob);
     fileDownload(url, "history.csv");
+  }
+
+  private _suggestCard() {
+    const entities = this._getEntityIds();
+    if (!entities || !this._mungedStateHistory) {
+      showAlertDialog(this, {
+        title: this.hass.localize("ui.panel.history.add_card_error"),
+        text: this.hass.localize("ui.panel.history.error_no_data"),
+        warning: true,
+      });
+      return;
+    }
+
+    // If you pick things like "This week", the end date can be in the future
+    const endDateTime = Math.min(this._endDate.getTime(), Date.now());
+
+    addEntitiesToLovelaceView(
+      this,
+      this.hass,
+      [
+        {
+          title: this.hass.localize("panel.history"),
+          type: "history-graph",
+          hours_to_show: Math.round(
+            (endDateTime - this._startDate.getTime()) / 1000 / 60 / 60
+          ),
+          entities,
+        },
+      ],
+      entities
+    );
   }
 
   static get styles() {
