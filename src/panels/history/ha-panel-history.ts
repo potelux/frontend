@@ -712,7 +712,7 @@ class HaPanelHistory extends SubscribeMixin(LitElement) {
 
         if (entity.statistics) {
           for (const s of entity.statistics) {
-            csv.push(`${entityId},${s.state},${formatDate(s.last_changed)}\n`);
+            csv.push(`${entityId},\"${s.state.replace("\"", "\"\"")}\",${formatDate(s.last_changed)}\n`);
           }
         }
 
